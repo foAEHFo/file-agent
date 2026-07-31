@@ -8,6 +8,31 @@ from typing import Any
 from httpx import ASGITransport, AsyncClient
 
 
+def build_test_app(runtime: Any) -> Any:
+    from file_agent.auth import AuthService, AuthSettings
+    from file_agent.web import create_app
+
+    return create_app(
+        runtime,
+        auth=AuthService(
+            AuthSettings(
+                username="demo",
+                password="password",
+                session_secret="test-signing-secret",
+                secure_cookie=False,
+            )
+        ),
+    )
+
+
+async def log_in(client: AsyncClient) -> None:
+    response = await client.post(
+        "/api/auth/login",
+        json={"username": "demo", "password": "password"},
+    )
+    assert response.status_code == 200
+
+
 class ImmediateAnswerModel:
     async def stream(
         self, input_items: Sequence[Mapping[str, Any]]
@@ -89,7 +114,6 @@ async def wait_for_event(run: Any, kind: str) -> Any:
 
 def test_web_workspace_run_sse_replay_and_trace_download(tmp_path: Path) -> None:
     from file_agent.runtime import WebRuntime
-    from file_agent.web import create_app
     from file_agent.workspace import WorkspaceManager
 
     async def scenario() -> None:
@@ -105,11 +129,12 @@ def test_web_workspace_run_sse_replay_and_trace_download(tmp_path: Path) -> None
             workspaces=workspaces,
             model_factory=ImmediateAnswerModel,
         )
-        app = create_app(runtime)
+        app = build_test_app(runtime)
         async with AsyncClient(
             transport=ASGITransport(app=app),
             base_url="http://test",
         ) as client:
+            await log_in(client)
             create_response = await client.post("/api/workspaces")
             assert create_response.status_code == 201
             workspace_id = create_response.json()["id"]
@@ -163,7 +188,6 @@ def test_web_workspace_run_sse_replay_and_trace_download(tmp_path: Path) -> None
 
 def test_web_active_run_and_idempotent_approval_contract(tmp_path: Path) -> None:
     from file_agent.runtime import WebRuntime
-    from file_agent.web import create_app
     from file_agent.workspace import WorkspaceManager
 
     async def scenario() -> None:
@@ -179,11 +203,12 @@ def test_web_active_run_and_idempotent_approval_contract(tmp_path: Path) -> None
             workspaces=workspaces,
             model_factory=lambda: model,
         )
-        app = create_app(runtime)
+        app = build_test_app(runtime)
         async with AsyncClient(
             transport=ASGITransport(app=app),
             base_url="http://test",
         ) as client:
+            await log_in(client)
             workspace_id = (await client.post("/api/workspaces")).json()["id"]
             created = await client.post(
                 "/api/runs",
@@ -233,7 +258,6 @@ def test_web_active_run_and_idempotent_approval_contract(tmp_path: Path) -> None
 
 def test_web_can_cancel_a_background_run(tmp_path: Path) -> None:
     from file_agent.runtime import WebRuntime
-    from file_agent.web import create_app
     from file_agent.workspace import WorkspaceManager
 
     async def scenario() -> None:
@@ -249,11 +273,12 @@ def test_web_can_cancel_a_background_run(tmp_path: Path) -> None:
             workspaces=workspaces,
             model_factory=lambda: model,
         )
-        app = create_app(runtime)
+        app = build_test_app(runtime)
         async with AsyncClient(
             transport=ASGITransport(app=app),
             base_url="http://test",
         ) as client:
+            await log_in(client)
             workspace_id = (await client.post("/api/workspaces")).json()["id"]
             run_id = (
                 await client.post(

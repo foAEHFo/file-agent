@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>文件助理工作台</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <script src="/static/app.js" defer></script>
+  </head>
+  <body data-page="app" class="app-page">
+    <header class="app-header">
+      <a class="brand" href="/" aria-label="文件助理首页">
+        <span class="brand-mark small" aria-hidden="true">档</span>
+        <span>
+          <strong>文件助理</strong>
+          <small>Workspace Agent</small>
+        </span>
+      </a>
+      <div class="header-status">
+        <span id="run-indicator" class="status-dot" aria-hidden="true"></span>
+        <span id="run-status">准备就绪</span>
+      </div>
+      <div class="account-actions">
+        <span id="current-user" class="user-chip"></span>
+        <button id="logout-button" class="quiet-button" type="button">退出</button>
+      </div>
+    </header>
+
+    <main class="workspace-layout">
+      <aside class="file-panel panel" aria-labelledby="files-title">
+        <div class="panel-heading">
+          <div>
+            <p class="section-kicker">当前副本</p>
+            <h2 id="files-title">工作区文件</h2>
+          </div>
+          <button id="refresh-tree" class="icon-button" type="button" title="刷新文件树">
+            刷新
+          </button>
+        </div>
+        <div id="workspace-state" class="workspace-state">正在准备工作区…</div>
+        <nav id="file-tree" class="file-tree" aria-label="工作区文件" hidden></nav>
+        <div class="file-actions">
+          <button id="reset-button" class="danger-button" type="button">
+            Reset Workspace
+          </button>
+        </div>
+      </aside>
+
+      <section class="agent-panel panel" aria-labelledby="agent-title">
+        <div class="agent-heading">
+          <div>
+            <p class="section-kicker">通用文件 Agent</p>
+            <h1 id="agent-title">今天要处理什么？</h1>
+          </div>
+          <a id="trace-link" class="trace-link" href="#" hidden>下载 trace.jsonl</a>
+        </div>
+
+        <form id="task-form" class="task-composer">
+          <label class="sr-only" for="task-input">任务描述</label>
+          <textarea
+            id="task-input"
+            rows="4"
+            maxlength="20000"
+            placeholder="例如：找出项目的正式名称，并按月份列出相关文件。"
+            required
+          ></textarea>
+          <div class="composer-footer">
+            <span>写操作会暂停并等待你的确认</span>
+            <div class="composer-actions">
+              <button id="cancel-button" class="quiet-button" type="button" hidden>
+                取消运行
+              </button>
+              <button id="run-button" class="primary-button" type="submit">
+                开始处理
+              </button>
+            </div>
+          </div>
+        </form>
+
+        <div id="conversation-empty" class="empty-state">
+          <span class="empty-glyph" aria-hidden="true">⌁</span>
+          <h2>从一个具体任务开始</h2>
+          <p>助理会先搜索，再按需读取文件。推理摘要、工具调用和结果会实时显示。</p>
+        </div>
+        <div id="conversation" class="conversation" aria-live="polite"></div>
+      </section>
+
+      <aside class="activity-panel panel" aria-labelledby="activity-title">
+        <div class="panel-heading">
+          <div>
+            <p class="section-kicker">实时运行</p>
+            <h2 id="activity-title">过程与审批</h2>
+          </div>
+        </div>
+        <dl class="usage-strip" aria-label="Token 用量">
+          <div><dt>输入</dt><dd id="usage-input">0</dd></div>
+          <div><dt>输出</dt><dd id="usage-output">0</dd></div>
+          <div><dt>推理</dt><dd id="usage-reasoning">0</dd></div>
+          <div><dt>总计</dt><dd id="usage-total">0</dd></div>
+        </dl>
+        <div id="activity-empty" class="activity-empty">运行开始后，步骤会显示在这里。</div>
+        <div id="activity-feed" class="activity-feed" aria-live="polite"></div>
+      </aside>
+    </main>
+
+    <dialog id="preview-dialog" class="preview-dialog">
+      <div class="preview-heading">
+        <div>
+          <p class="section-kicker">安全分页预览</p>
+          <h2 id="preview-title">文件预览</h2>
+        </div>
+        <button id="preview-close" class="icon-button" type="button">关闭</button>
+      </div>
+      <pre id="preview-content" tabindex="0"></pre>
+      <div class="preview-footer">
+        <span id="preview-range"></span>
+        <div>
+          <button id="preview-previous" class="quiet-button" type="button">上一页</button>
+          <button id="preview-next" class="quiet-button" type="button">下一页</button>
+        </div>
+      </div>
+    </dialog>
+
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  </body>
+</html>

@@ -4,15 +4,29 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager, suppress
+from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import FastAPI, Header, HTTPException, Query, Request, status
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import (
+    FileResponse,
+    JSONResponse,
+    RedirectResponse,
+    Response,
+    StreamingResponse,
+)
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
 from file_agent.agent import RunLimits
+from file_agent.auth import (
+    SESSION_COOKIE_NAME,
+    SESSION_MAX_AGE_SECONDS,
+    AuthService,
+    AuthSettings,
+)
 from file_agent.config import Settings, load_settings
 from file_agent.model import OpenAIResponsesClient
 from file_agent.prompts import SYSTEM_INSTRUCTIONS, TOOL_DEFINITIONS
@@ -38,11 +52,33 @@ class ApprovalDecisionRequest(ApiModel):
     approved: bool
 
 
-def create_app(runtime: WebRuntime | None = None) -> FastAPI:
+class LoginRequest(ApiModel):
+    username: str
+    password: str
+
+
+STATIC_ROOT = Path(__file__).parent / "static"
+
+
+def create_app(
+    runtime: WebRuntime | None = None,
+    *,
+    auth: AuthService | None = None,
+) -> FastAPI:
+    if (runtime is None) is not (auth is None):
+        raise ValueError("runtime and auth must be provided together")
+
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
-        selected_runtime = runtime or _runtime_from_settings(load_settings())
+        if runtime is None or auth is None:
+            settings = load_settings()
+            selected_runtime = _runtime_from_settings(settings)
+            selected_auth = _auth_from_settings(settings)
+        else:
+            selected_runtime = runtime
+            selected_auth = auth
         application.state.runtime = selected_runtime
+        application.state.auth = selected_auth
         cleanup_task = asyncio.create_task(_cleanup_loop(selected_runtime))
         try:
             yield
@@ -53,12 +89,94 @@ def create_app(runtime: WebRuntime | None = None) -> FastAPI:
             await selected_runtime.shutdown()
 
     application = FastAPI(title="文件助理 Agent", lifespan=lifespan)
-    if runtime is not None:
+    if runtime is not None and auth is not None:
         application.state.runtime = runtime
+        application.state.auth = auth
+
+    @application.middleware("http")
+    async def authenticate(
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
+        path = request.url.path
+        public = (
+            path == "/health"
+            or path == "/login"
+            or path == "/api/auth/login"
+            or path.startswith("/static/")
+        )
+        if not public:
+            selected_auth = _auth(request)
+            username = selected_auth.verify_cookie(
+                request.cookies.get(SESSION_COOKIE_NAME)
+            )
+            if username is None:
+                if path.startswith("/api/"):
+                    unauthorized_response = JSONResponse(
+                        status_code=401,
+                        content={"detail": "Authentication required"},
+                    )
+                    return _secure_headers(unauthorized_response)
+                return _secure_headers(RedirectResponse("/login", status_code=307))
+            request.state.username = username
+        response = await call_next(request)
+        return _secure_headers(response)
 
     @application.get("/health")
     async def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @application.get("/login")
+    async def login_page(request: Request) -> Response:
+        selected_auth = _auth(request)
+        if (
+            selected_auth.verify_cookie(request.cookies.get(SESSION_COOKIE_NAME))
+            is not None
+        ):
+            return RedirectResponse("/", status_code=303)
+        return FileResponse(STATIC_ROOT / "login.html")
+
+    @application.get("/")
+    async def index_page() -> FileResponse:
+        return FileResponse(STATIC_ROOT / "index.html")
+
+    @application.post("/api/auth/login")
+    async def login(
+        body: LoginRequest,
+        request: Request,
+    ) -> JSONResponse:
+        selected_auth = _auth(request)
+        if not selected_auth.verify_credentials(body.username, body.password):
+            raise HTTPException(status_code=401, detail="Invalid credentials")
+        token = selected_auth.issue_cookie(body.username)
+        response = JSONResponse({"username": body.username})
+        response.set_cookie(
+            SESSION_COOKIE_NAME,
+            token,
+            max_age=SESSION_MAX_AGE_SECONDS,
+            httponly=True,
+            secure=selected_auth.settings.secure_cookie,
+            samesite="lax",
+            path="/",
+        )
+        return response
+
+    @application.post("/api/auth/logout")
+    async def logout(request: Request) -> JSONResponse:
+        selected_auth = _auth(request)
+        response = JSONResponse({"logged_out": True})
+        response.delete_cookie(
+            SESSION_COOKIE_NAME,
+            httponly=True,
+            secure=selected_auth.settings.secure_cookie,
+            samesite="lax",
+            path="/",
+        )
+        return response
+
+    @application.get("/api/auth/me")
+    async def current_user(request: Request) -> dict[str, str]:
+        return {"username": str(request.state.username)}
 
     @application.post("/api/workspaces", status_code=status.HTTP_201_CREATED)
     async def create_workspace(request: Request) -> dict[str, Any]:
@@ -213,6 +331,11 @@ def create_app(runtime: WebRuntime | None = None) -> FastAPI:
             filename="trace.jsonl",
         )
 
+    application.mount(
+        "/static",
+        StaticFiles(directory=STATIC_ROOT),
+        name="static",
+    )
     return application
 
 
@@ -221,6 +344,28 @@ def _runtime(request: Request) -> WebRuntime:
     if not isinstance(selected, WebRuntime):
         raise HTTPException(status_code=503, detail="Web runtime is not ready")
     return selected
+
+
+def _auth(request: Request) -> AuthService:
+    selected = getattr(request.app.state, "auth", None)
+    if not isinstance(selected, AuthService):
+        raise HTTPException(status_code=503, detail="Authentication is not ready")
+    return selected
+
+
+def _secure_headers(response: Response) -> Response:
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "connect-src 'self'; "
+        "script-src 'self'; "
+        "style-src 'self'; "
+        "object-src 'none'; "
+        "base-uri 'none'; "
+        "frame-ancestors 'none'"
+    )
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "same-origin"
+    return response
 
 
 def _tool_data(result: ToolResult) -> dict[str, Any]:
@@ -268,6 +413,16 @@ def _runtime_from_settings(settings: Settings) -> WebRuntime:
             active_timeout_seconds=float(settings.run_timeout_seconds),
         ),
         max_run_file_content_bytes=settings.max_run_file_content_bytes,
+    )
+
+
+def _auth_from_settings(settings: Settings) -> AuthService:
+    return AuthService(
+        AuthSettings(
+            username=settings.demo_username,
+            password=settings.demo_password,
+            session_secret=settings.session_secret,
+        )
     )
 
 

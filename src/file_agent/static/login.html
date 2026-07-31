@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>登录 · 文件助理</title>
+    <link rel="stylesheet" href="/static/styles.css">
+    <script src="/static/app.js" defer></script>
+  </head>
+  <body data-page="login" class="login-page">
+    <main class="login-shell">
+      <section class="login-intro" aria-labelledby="login-title">
+        <div class="brand-mark" aria-hidden="true">档</div>
+        <p class="eyebrow">FILE WORKSPACE</p>
+        <h1 id="login-title">文件助理</h1>
+        <p class="login-lead">
+          在受限工作区内查找、阅读和整理文件。每一次写操作都清晰可见、可确认。
+        </p>
+        <div class="trust-list" aria-label="安全特性">
+          <span>路径隔离</span>
+          <span>逐次审批</span>
+          <span>操作留痕</span>
+        </div>
+      </section>
+
+      <section class="login-card" aria-labelledby="form-title">
+        <p class="section-kicker">受保护的演示环境</p>
+        <h2 id="form-title">登录工作台</h2>
+        <form id="login-form">
+          <label for="username">账号</label>
+          <input
+            id="username"
+            name="username"
+            type="text"
+            autocomplete="username"
+            required
+            autofocus
+          >
+          <label for="password">密码</label>
+          <input
+            id="password"
+            name="password"
+            type="password"
+            autocomplete="current-password"
+            required
+          >
+          <p id="login-error" class="form-error" role="alert" hidden></p>
+          <button id="login-submit" class="primary-button" type="submit">
+            进入工作台
+          </button>
+        </form>
+        <p class="login-footnote">登录状态将在 8 小时后自动失效。</p>
+      </section>
+    </main>
+  </body>
+</html>
