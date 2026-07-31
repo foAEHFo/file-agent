@@ -33,12 +33,16 @@ class FileTools:
     """Execute the seven file tools against one bounded workspace."""
 
     def __init__(
-        self, workspace: Path, *, max_run_file_content_bytes: int = 262_144
+        self,
+        workspace: Path,
+        *,
+        max_run_file_content_bytes: int = 262_144,
+        capture_manifest: bool = True,
     ) -> None:
         self.sandbox = Sandbox(workspace)
         self.max_run_file_content_bytes = max_run_file_content_bytes
         self._returned_file_content_bytes = 0
-        self._initial_manifest = self._snapshot_manifest()
+        self._initial_manifest = self._snapshot_manifest() if capture_manifest else {}
 
     def execute(self, tool: str, arguments: Mapping[str, Any]) -> ToolResult:
         """Execute a named tool and return the uniform result contract."""

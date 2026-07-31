@@ -6,9 +6,10 @@ import asyncio
 import json
 import time
 from collections.abc import Awaitable, Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any, Protocol
+from uuid import uuid4
 
 from pydantic import ValidationError
 
@@ -56,6 +57,7 @@ class AgentEvent:
 class ApprovalRequest:
     tool: str
     args: Mapping[str, Any]
+    id: str = field(default_factory=lambda: uuid4().hex)
 
 
 class ApprovalHandler(Protocol):
@@ -223,17 +225,25 @@ class AgentRunner:
                 result = validation_failure
                 if result is None:
                     if tool_name in MUTATING_TOOLS:
+                        approval_request = ApprovalRequest(
+                            tool=tool_name,
+                            args=execution_args,
+                        )
                         await emit(
                             AgentEvent(
                                 AgentEventKind.APPROVAL_REQUIRED,
-                                {"tool": tool_name, "args": execution_args},
+                                {
+                                    "approval_id": approval_request.id,
+                                    "tool": tool_name,
+                                    "args": execution_args,
+                                },
                             )
                         )
                         approval_started = self._clock()
                         try:
                             try:
                                 approved = await self._approval.request(
-                                    ApprovalRequest(tool_name, execution_args)
+                                    approval_request
                                 )
                             except Exception as error:
                                 return await self._failed(
@@ -246,7 +256,11 @@ class AgentRunner:
                         await emit(
                             AgentEvent(
                                 AgentEventKind.APPROVAL_RESOLVED,
-                                {"tool": tool_name, "approved": approved},
+                                {
+                                    "approval_id": approval_request.id,
+                                    "tool": tool_name,
+                                    "approved": approved,
+                                },
                             )
                         )
                         if not approved:
@@ -478,10 +492,10 @@ def _validate_arguments(
 
 
 def _merge_usage(total: dict[str, int], usage: Mapping[str, Any]) -> None:
-    for field in ("input_tokens", "output_tokens", "total_tokens"):
-        value = usage.get(field, 0)
+    for field_name in ("input_tokens", "output_tokens", "total_tokens"):
+        value = usage.get(field_name, 0)
         if isinstance(value, int):
-            total[field] += value
+            total[field_name] += value
     output_details = usage.get("output_tokens_details")
     if isinstance(output_details, Mapping):
         reasoning_tokens = output_details.get("reasoning_tokens", 0)
