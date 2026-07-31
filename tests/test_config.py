@@ -26,9 +26,9 @@ class LoadSettingsTests(unittest.TestCase):
         self.assertEqual(settings.workspace_seed_path.as_posix(), "workspace")
         self.assertEqual(settings.runtime_root.as_posix(), "/tmp/file-agent")
         self.assertEqual(settings.session_ttl_seconds, 3600)
-        self.assertEqual(settings.max_llm_calls, 20)
-        self.assertEqual(settings.max_tool_calls, 80)
-        self.assertEqual(settings.run_timeout_seconds, 300)
+        self.assertEqual(settings.max_llm_calls, 30)
+        self.assertEqual(settings.max_tool_calls, 100)
+        self.assertEqual(settings.run_timeout_seconds, 1200)
         self.assertEqual(settings.max_run_file_content_bytes, 262_144)
 
     def test_reports_all_missing_required_settings(self) -> None:

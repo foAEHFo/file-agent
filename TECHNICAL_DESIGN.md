@@ -99,7 +99,7 @@ Web 固定单 Uvicorn worker、单 Railway replica。
 | 写审批 | 每个写工具逐次确认，批准后立即生效 |
 | CLI 审批 | TTY 询问；`--yes` 自动批准；非 TTY 默认拒绝 |
 | 工具并发 | 顺序执行 |
-| 预算 | 20 次 LLM、80 次工具、300 秒活动时间 |
+| 预算 | 30 次 LLM、100 次工具、1200 秒活动时间 |
 | 文件正文预算 | 每 Run 返回给模型最多 256KB |
 | TTL | 闲置 1 小时 |
 | 登录 | 环境变量共享账号密码 + 签名 Cookie |
@@ -278,9 +278,9 @@ Responses 使用 `store=false`、`stream=true`、`reasoning.summary=auto`。客�
 
 限制：
 
-- 重试也计入 20 次 LLM；
-- 成功、失败、拒绝均计入 80 个工具 step；
-- 300 秒不含人工审批等待；
+- 重试也计入 30 次 LLM；
+- 成功、失败、拒绝均计入 100 个工具 step；
+- 1200 秒不含人工审批等待；
 - 流中断重试一次，不执行不完整工具；
 - 超限返回确定性的 `INCOMPLETE` 和已生效修改；
 - 批准后立即生效，不做 Run 级回滚；
@@ -349,9 +349,9 @@ SESSION_SECRET=
 WORKSPACE_SEED_PATH=./workspace
 RUNTIME_ROOT=/tmp/file-agent
 SESSION_TTL_SECONDS=3600
-MAX_LLM_CALLS=20
-MAX_TOOL_CALLS=80
-RUN_TIMEOUT_SECONDS=300
+MAX_LLM_CALLS=30
+MAX_TOOL_CALLS=100
+RUN_TIMEOUT_SECONDS=1200
 MAX_RUN_FILE_CONTENT_BYTES=262144
 ```
 
@@ -410,7 +410,7 @@ MAX_RUN_FILE_CONTENT_BYTES=262144
 - reasoning、answer、tool、usage 内部事件完成。
 - 多工具顺序执行。
 - 坏参数和工具失败回填模型。
-- 20/80/300 限制和一次重试生效。
+- 30/100/1200 限制和一次重试生效。
 - Fake Responses 流测试不消耗 API key。
 
 **Target Modules**

@@ -567,7 +567,7 @@ def test_agent_enforces_active_time_limit(tmp_path: Path) -> None:
     assert result.error == "Active run time limit reached."
     assert result.answer == ""
     assert RunLimits() == RunLimits(
-        max_llm_calls=20,
-        max_tool_calls=80,
-        active_timeout_seconds=300,
+        max_llm_calls=30,
+        max_tool_calls=100,
+        active_timeout_seconds=1200,
     )

@@ -71,8 +71,8 @@ def load_settings() -> Settings:
         workspace_seed_path=Path(os.environ.get("WORKSPACE_SEED_PATH", "./workspace")),
         runtime_root=Path(os.environ.get("RUNTIME_ROOT", "/tmp/file-agent")),
         session_ttl_seconds=_positive_int("SESSION_TTL_SECONDS", 3600),
-        max_llm_calls=_positive_int("MAX_LLM_CALLS", 20),
-        max_tool_calls=_positive_int("MAX_TOOL_CALLS", 80),
-        run_timeout_seconds=_positive_int("RUN_TIMEOUT_SECONDS", 300),
+        max_llm_calls=_positive_int("MAX_LLM_CALLS", 30),
+        max_tool_calls=_positive_int("MAX_TOOL_CALLS", 100),
+        run_timeout_seconds=_positive_int("RUN_TIMEOUT_SECONDS", 1200),
         max_run_file_content_bytes=_positive_int("MAX_RUN_FILE_CONTENT_BYTES", 262_144),
     )
