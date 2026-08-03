@@ -139,7 +139,9 @@ def test_cli_streams_events_and_writes_trace_for_selected_workspace(
     model = FakeCliModel(
         [
             [
-                ModelEvent(ModelEventKind.REASONING_DELTA, delta="先读取状态文件。"),
+                ModelEvent(ModelEventKind.REASONING_DELTA, delta="先读取"),
+                ModelEvent(ModelEventKind.REASONING_DELTA, delta="状态"),
+                ModelEvent(ModelEventKind.REASONING_DELTA, delta="文件。"),
                 ModelEvent(ModelEventKind.OUTPUT_ITEM, item=function_call),
                 ModelEvent(
                     ModelEventKind.USAGE,
@@ -152,7 +154,9 @@ def test_cli_streams_events_and_writes_trace_for_selected_workspace(
                 ModelEvent(ModelEventKind.COMPLETED),
             ],
             [
-                ModelEvent(ModelEventKind.ANSWER_DELTA, delta="当前状态正常。"),
+                ModelEvent(ModelEventKind.ANSWER_DELTA, delta="当前"),
+                ModelEvent(ModelEventKind.ANSWER_DELTA, delta="状态"),
+                ModelEvent(ModelEventKind.ANSWER_DELTA, delta="正常。"),
                 ModelEvent(ModelEventKind.OUTPUT_ITEM, item=final_message),
                 ModelEvent(
                     ModelEventKind.USAGE,
@@ -185,10 +189,13 @@ def test_cli_streams_events_and_writes_trace_for_selected_workspace(
 
     assert exit_code == 0
     output = output_stream.getvalue()
-    assert "[推理] 先读取状态文件。" in output
+    assert "[推理] 先读取状态文件。\n" in output
+    assert output.count("[推理]") == 1
     assert "[工具]" in output and "read_file" in output
     assert "[结果]" in output and "status.md" in output
-    assert "[回答] 当前状态正常。" in output
+    assert "[回答] 当前状态正常。\n" in output
+    assert output.count("[回答]") == 1
+    assert "[回答] 当前状态正常。\n[用量]" in output
     assert "[用量]" in output and "39" in output
     record = json.loads(trace_path.read_text(encoding="utf-8"))
     assert set(record) == {"step", "tool", "args", "result_summary"}
@@ -287,3 +294,78 @@ def test_cli_yes_cannot_bypass_hash_or_workspace_sandbox(tmp_path: Path) -> None
         set(record) == {"step", "tool", "args", "result_summary"}
         for record in trace_records
     )
+
+
+def test_cli_falls_back_to_final_answer_after_empty_delta(tmp_path: Path) -> None:
+    from file_agent.cli import CliOptions, run_cli
+    from file_agent.model import ModelEvent, ModelEventKind
+
+    model = FakeCliModel(
+        [
+            [
+                ModelEvent(ModelEventKind.ANSWER_DELTA, delta=""),
+                ModelEvent(
+                    ModelEventKind.OUTPUT_ITEM,
+                    item={
+                        "type": "message",
+                        "role": "assistant",
+                        "content": [
+                            {"type": "output_text", "text": "最终完整回答。"}
+                        ],
+                    },
+                ),
+                ModelEvent(ModelEventKind.COMPLETED),
+            ]
+        ]
+    )
+    output_stream = io.StringIO()
+
+    exit_code = asyncio.run(
+        run_cli(
+            CliOptions(
+                workspace=tmp_path,
+                task="测试空分块",
+                trace=tmp_path / "trace.jsonl",
+                yes=False,
+            ),
+            model=model,
+            input_stream=io.StringIO(),
+            output_stream=output_stream,
+            environment={},
+        )
+    )
+
+    assert exit_code == 0
+    assert "[回答] 最终完整回答。\n" in output_stream.getvalue()
+
+
+def test_cli_finishes_partial_delta_before_caught_error(tmp_path: Path) -> None:
+    from file_agent.cli import CliOptions, run_cli
+    from file_agent.model import ModelEvent, ModelEventKind
+
+    class BrokenModel:
+        async def stream(
+            self, input_items: Sequence[Mapping[str, Any]]
+        ) -> AsyncIterator[Any]:
+            yield ModelEvent(ModelEventKind.ANSWER_DELTA, delta="部分回答")
+            raise OSError("连接中断")
+
+    output_stream = io.StringIO()
+
+    exit_code = asyncio.run(
+        run_cli(
+            CliOptions(
+                workspace=tmp_path,
+                task="测试异常边界",
+                trace=tmp_path / "trace.jsonl",
+                yes=False,
+            ),
+            model=BrokenModel(),
+            input_stream=io.StringIO(),
+            output_stream=output_stream,
+            environment={},
+        )
+    )
+
+    assert exit_code == 2
+    assert "[回答] 部分回答\n[错误] 连接中断\n" in output_stream.getvalue()

@@ -39,15 +39,19 @@ class CliEventRenderer:
 
     def __init__(self, output_stream: TextIO) -> None:
         self._output = output_stream
+        self._stream_label: str | None = None
+        self._stream_needs_newline = False
         self.answer_emitted = False
 
     async def emit(self, event: AgentEvent) -> None:
         data = event.data
         if event.kind is AgentEventKind.REASONING_DELTA:
-            self._line("推理", str(data.get("delta", "")))
+            self._delta("推理", str(data.get("delta", "")))
         elif event.kind is AgentEventKind.ANSWER_DELTA:
-            self.answer_emitted = True
-            self._line("回答", str(data.get("delta", "")))
+            delta = str(data.get("delta", ""))
+            if delta:
+                self.answer_emitted = True
+                self._delta("回答", delta)
         elif event.kind is AgentEventKind.TOOL_STARTED:
             arguments = json.dumps(
                 data.get("args", {}),
@@ -88,7 +92,31 @@ class CliEventRenderer:
         self.answer_emitted = True
         self._line("回答", answer)
 
+    def finish(self) -> None:
+        self._finish_stream()
+
+    def _delta(self, label: str, text: str) -> None:
+        if not text:
+            return
+        if self._stream_label != label:
+            self._finish_stream()
+            self._output.write(f"[{label}] ")
+            self._stream_label = label
+        self._output.write(text)
+        self._stream_needs_newline = not text.endswith("\n")
+        self._output.flush()
+
+    def _finish_stream(self) -> None:
+        if self._stream_label is None:
+            return
+        if self._stream_needs_newline:
+            self._output.write("\n")
+        self._output.flush()
+        self._stream_label = None
+        self._stream_needs_newline = False
+
     def _line(self, label: str, text: str) -> None:
+        self._finish_stream()
         self._output.write(f"[{label}] {text}\n")
         self._output.flush()
 
@@ -131,6 +159,7 @@ async def run_cli(
     environment: Mapping[str, str] | None = None,
 ) -> int:
     environment = os.environ if environment is None else environment
+    renderer = CliEventRenderer(output_stream)
     try:
         limits = RunLimits(
             max_llm_calls=_positive_environment(environment, "MAX_LLM_CALLS", 30),
@@ -148,7 +177,6 @@ async def run_cli(
             ),
         )
         selected_model = model or _model_from_environment(environment)
-        renderer = CliEventRenderer(output_stream)
         approval = CliApprovalHandler(
             auto_approve=options.yes,
             input_stream=input_stream,
@@ -168,10 +196,12 @@ async def run_cli(
             )
         if result.answer and not renderer.answer_emitted:
             renderer.write_answer(result.answer)
+        renderer.finish()
         output_stream.write(f"[追踪] {options.trace}\n")
         output_stream.flush()
         return 0 if result.status is RunStatus.COMPLETED else 1
     except (KeyError, OSError, ValueError) as error:
+        renderer.finish()
         output_stream.write(f"[错误] {error}\n")
         output_stream.flush()
         return 2
