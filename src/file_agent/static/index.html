@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>文件助理工作台</title>
     <link rel="stylesheet" href="/static/styles.css">
+    <script src="/static/markdown.js" defer></script>
     <script src="/static/app.js" defer></script>
   </head>
   <body data-page="app" class="app-page">
@@ -82,7 +83,7 @@
           <h2>从一个具体任务开始</h2>
           <p>助理会先搜索，再按需读取文件。推理摘要、工具调用和结果会实时显示。</p>
         </div>
-        <div id="conversation" class="conversation" aria-live="polite"></div>
+        <div id="conversation" class="conversation" aria-live="off"></div>
       </section>
 
       <aside class="activity-panel panel" aria-labelledby="activity-title">

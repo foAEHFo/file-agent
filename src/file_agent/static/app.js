@@ -42,6 +42,22 @@ function showToast(message) {
   }, 3600);
 }
 
+async function refreshTreeWithFeedback(button, refresh, notify) {
+  button.disabled = true;
+  button.textContent = "刷新中…";
+  try {
+    await refresh();
+    notify("文件列表已刷新");
+  } catch (error) {
+    notify(error instanceof Error ? error.message : "文件列表刷新失败");
+  } finally {
+    button.disabled = false;
+    button.textContent = "刷新";
+  }
+}
+
+window.FileAgentUi = Object.freeze({ refreshTreeWithFeedback });
+
 function initializeLogin() {
   const form = byId("login-form");
   const submit = byId("login-submit");
@@ -76,6 +92,8 @@ function initializeApp() {
     source: null,
     running: false,
     answerBlock: null,
+    answerText: "",
+    answerRenderTimer: null,
     reasoningBlock: null,
     approvals: new Map(),
     previewPath: null,
@@ -93,11 +111,16 @@ function initializeApp() {
   };
 
   const clearRunPanels = () => {
+    if (state.answerRenderTimer !== null) {
+      window.clearTimeout(state.answerRenderTimer);
+      state.answerRenderTimer = null;
+    }
     byId("conversation").replaceChildren();
     byId("activity-feed").replaceChildren();
     byId("conversation-empty").hidden = true;
     byId("activity-empty").hidden = true;
     state.answerBlock = null;
+    state.answerText = "";
     state.reasoningBlock = null;
     state.approvals.clear();
     updateUsage({});
@@ -111,9 +134,24 @@ function initializeApp() {
     heading.textContent = title;
     const content = document.createElement("div");
     content.className = "message-content";
+    if (kind === "answer") content.classList.add("markdown-content");
     article.append(heading, content);
     byId("conversation").append(article);
     return content;
+  };
+
+  const renderAnswerNow = () => {
+    if (state.answerRenderTimer !== null) {
+      window.clearTimeout(state.answerRenderTimer);
+      state.answerRenderTimer = null;
+    }
+    if (!state.answerBlock) return;
+    window.FileAgentMarkdown.renderMarkdown(state.answerBlock, state.answerText);
+  };
+
+  const scheduleAnswerRender = () => {
+    if (state.answerRenderTimer !== null) return;
+    state.answerRenderTimer = window.setTimeout(renderAnswerNow, 80);
   };
 
   const addActivity = (kind, title, detail) => {
@@ -197,7 +235,9 @@ function initializeApp() {
   };
 
   const finishRun = (label) => {
+    renderAnswerNow();
     setRunState(false, label);
+    showToast(`运行状态：${label}`);
     if (state.source) state.source.close();
     state.source = null;
     state.runId = null;
@@ -244,7 +284,8 @@ function initializeApp() {
       if (!state.answerBlock) {
         state.answerBlock = addConversationBlock("answer", "文件助理");
       }
-      state.answerBlock.textContent += data.delta || "";
+      state.answerText += data.delta || "";
+      scheduleAnswerRender();
     });
     source.addEventListener("tool.started", (event) => {
       const data = parseEvent(event);
@@ -325,7 +366,7 @@ function initializeApp() {
   };
 
   async function loadTree() {
-    if (!state.workspaceId) return;
+    if (!state.workspaceId) throw new Error("工作区尚未准备完成");
     const data = await requestJson(
       `/api/workspaces/${encodeURIComponent(state.workspaceId)}/tree`,
     );
@@ -425,9 +466,10 @@ function initializeApp() {
     }
   });
 
-  byId("refresh-tree").addEventListener("click", () => {
-    loadTree().catch((error) => showToast(error.message));
-  });
+  const refreshButton = byId("refresh-tree");
+  refreshButton.addEventListener("click", () =>
+    refreshTreeWithFeedback(refreshButton, loadTree, showToast),
+  );
   byId("preview-close").addEventListener("click", () =>
     byId("preview-dialog").close(),
   );

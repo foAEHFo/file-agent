@@ -114,13 +114,30 @@ def test_web_login_cookie_logout_and_route_protection(tmp_path: Path) -> None:
             assert 'id="task-form"' in index.text
             assert 'id="file-tree"' in index.text
             assert 'id="activity-feed"' in index.text
+            conversation = 'id="conversation" class="conversation" aria-live="off"'
+            assert conversation in index.text
+            assert index.text.index("/static/markdown.js") < index.text.index(
+                "/static/app.js"
+            )
             assert "default-src 'self'" in index.headers["content-security-policy"]
             script = await client.get("/static/app.js")
             assert script.status_code == 200
             assert "new EventSource" in script.text
             assert "approval.required" in script.text
+            assert "renderAnswerNow" in script.text
+            assert "window.setTimeout" in script.text
+            assert "renderMarkdown" in script.text
             assert "textContent" in script.text
             assert "innerHTML" not in script.text
+            assert "refreshTreeWithFeedback" in script.text
+            markdown = await client.get("/static/markdown.js")
+            assert markdown.status_code == 200
+            assert "renderMarkdown" in markdown.text
+            assert "document.createElement" in markdown.text
+            assert "textContent" in markdown.text
+            assert 'protocol === "http:"' in markdown.text
+            assert 'protocol === "https:"' in markdown.text
+            assert "innerHTML" not in markdown.text
             assert (await client.post("/api/workspaces")).status_code == 201
 
             logout = await client.post("/api/auth/logout")
